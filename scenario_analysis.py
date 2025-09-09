@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 def run_scenario(fund_data, factor_shocks, asset_shocks=None, factor_corr=None):
     """
@@ -45,9 +46,10 @@ def run_scenario(fund_data, factor_shocks, asset_shocks=None, factor_corr=None):
     asset_impact = np.zeros(len(base_returns))
     if asset_shocks:
         for asset, shock in asset_shocks.items():
-            mask = fund_data["Fund name"].str.contains(asset, case=False, regex=True)
-            asset_impact[mask] += shock
-    
+            print( asset, shock)
+            mask = fund_data["Strategy"].str.contains(asset, case=False, regex=True)
+            asset_impact[mask] = base_returns[mask] * shock
+
     # New fund returns
     scenario_returns = base_returns + factor_impacts + asset_impact
     fund_data["Scenario_Return"] = scenario_returns
@@ -73,4 +75,58 @@ def run_scenario(fund_data, factor_shocks, asset_shocks=None, factor_corr=None):
     }
 
 
+def plot_scenario_analysis(data, scenarios, beta_adjustments=None, scale_factor=200):
+    """
+    Plot Portfolio Return vs Beta across different scenarios.
+    
+    Parameters:
+    - data: DataFrame with columns [Strategy, Return_post, Beta, Net_exp, Lever_ratio]
+    - scenarios: dict {scenario_name: {strategy: weight}}
+    - beta_adjustments: dict {scenario_name: {strategy: multiplier}} (optional)
+    - scale_factor: float, multiplier for bubble size scaling
+    """
+    data = data.copy()
+    data["Gross_exp"] = data["Net_exp"] * data["Lever_ratio"]
 
+    results = []
+    for scenario, strat_weights in scenarios.items():
+        temp = data.copy()
+
+        # Strategy-level weights equally distributed across instruments
+        temp["Weight"] = temp["Strategy"].apply(lambda s: strat_weights[s] / (temp["Strategy"]==s).sum())
+
+        # Adjust beta if given
+        if beta_adjustments and scenario in beta_adjustments:
+            temp["Adj_Beta"] = temp.apply(
+                lambda row: row["Beta"] * beta_adjustments[scenario].get(row["Strategy"], 1.0), axis=1
+            )
+        else:
+            temp["Adj_Beta"] = temp["Beta"]
+
+        # Portfolio metrics
+        port_return = (temp["Return_post"] * temp["Weight"]).sum()
+        port_beta   = (temp["Adj_Beta"] * temp["Weight"]).sum()
+        gross_exp   = (temp["Gross_exp"] * temp["Weight"]).sum()*10  # scale for visibility
+
+        results.append({"Scenario": scenario, "Return": port_return, "Beta": port_beta, "Gross_exp": gross_exp})
+
+    results_df = pd.DataFrame(results)
+
+    # Plot
+    plt.figure(figsize=(8,6))
+    plt.scatter(results_df["Beta"], results_df["Return"],
+                s=results_df["Gross_exp"] * scale_factor,
+                alpha=0.6, color="blue", edgecolors="k")
+
+    # Annotate
+    for i, row in results_df.iterrows():
+        plt.text(row["Beta"]+0.01, row["Return"],
+                 f'{row["Scenario"]}\nGrossExp={row["Gross_exp"]:.2f}', fontsize=9)
+
+    plt.title("Portfolio Return vs Beta across Scenarios (Bubble = Gross Exposure)")
+    plt.xlabel("Portfolio Beta")
+    plt.ylabel("Portfolio Return")
+    plt.grid(True, linestyle="--", alpha=0.6)
+    plt.show()
+    
+    return results_df
