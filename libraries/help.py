@@ -1,4 +1,4 @@
-from regime_modeling import HMMRegimeDetector
+from libraries.regime_modeling import HMMRegimeDetector
 import pandas as pd
 import numpy as np
 from datetime import datetime

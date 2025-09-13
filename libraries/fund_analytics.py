@@ -255,7 +255,7 @@ class PortfolioAnalytics:
         
         axes[0,2].plot(self.df.index, tracking_error_gross.cumsum(), label='Gross TE', linewidth=2)
         axes[0,2].plot(self.df.index, tracking_error_net.cumsum(), label='Net TE', linewidth=2)
-        axes[0,2].set_title('Cumulative Tracking Error')
+        axes[0,2].set_title('Cumulative Excess Return')
         axes[0,2].legend()
         axes[0,2].grid(True, alpha=0.3)
         axes[0,2].axhline(y=0, color='black', linestyle='-', alpha=0.3)
