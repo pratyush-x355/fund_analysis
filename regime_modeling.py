@@ -82,7 +82,7 @@ class HMMRegimeDetector:
         return df
     
     def fit(self, data, price_column='Adj Close', n_states=None, max_states=8, 
-            criterion='aic', return_window=5, n_iterations=10, plot_selection=True):
+            criterion='aic', return_window=2, n_iterations=10, plot_selection=True):
         """
         Fit the HMM model to the data.
         
