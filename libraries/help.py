@@ -2,6 +2,13 @@ from libraries.regime_modeling import HMMRegimeDetector
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import seaborn as sns
+import matplotlib.pyplot as plt
+import warnings
+warnings.filterwarnings('ignore')
+
+plt.style.use('seaborn-v0_8')
+sns.set_palette("husl")
 
 
 def demo_hmm_detector_monthly(monthly_data, price_column='Adj Close', date_column='Date'):
@@ -219,3 +226,193 @@ def calculate_monthly_performance_fees(data, annual_performance_fee_rate, annual
         print(f"Average Annual Performance Fee: {avg_annual_fee:.4%}")
     
     return df
+
+
+def calculate_var_covar_pandas(data):
+    
+    # Calculate covariance matrix
+    covar_matrix = data.cov()
+    
+    # Extract variances (diagonal elements)
+    variances = np.diag(covar_matrix)
+    
+    return covar_matrix, variances
+
+# Visualization function
+def plot_covariance_matrix(covar_matrix, instrument_names=None):
+    """
+    Plot heatmap of covariance matrix
+    """
+    plt.figure(figsize=(5, 4))
+    
+    if instrument_names is None:
+        instrument_names = [f'Instrument_{i+1}' for i in range(covar_matrix.shape[0])]
+    
+    sns.heatmap(covar_matrix, 
+                annot=True, 
+                cmap='RdBu_r', 
+                center=0,
+                xticklabels=instrument_names,
+                yticklabels=instrument_names,
+                fmt='.4f')
+    
+    plt.title('Variance-Covariance Matrix')
+    plt.tight_layout()
+    plt.show()
+
+
+
+def plot_risk_attribution(df, total_variance, title="Portfolio Risk Attribution Dashboard"):
+    """
+    Create a risk attribution dashboard with multiple visualizations and insights.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Must contain columns: ['Factor', 'Absolute_Risk', 'Risk_Percentage']
+    total_variance : float
+        Total portfolio variance (same units as Absolute_Risk)
+    title : str
+        Dashboard title
+    """
+    
+    print("Portfolio Risk Attribution Analysis")
+    print("=" * 50)
+    print(f"Total Portfolio Variance: {total_variance:.6f}")
+    print("\nRisk Attribution Table:")
+    print(df.to_string(index=False))
+
+    # Create visualization
+    fig = plt.figure(figsize=(20, 12))
+    fig.suptitle(title, fontsize=24, fontweight='bold', y=0.95)
+
+    # 1. Pie Chart - Positive Contributors
+    ax1 = plt.subplot(2, 3, 1)
+    positive_data = df[df['Risk_Percentage'] > 0]
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57', '#FF9FF3']
+    wedges, texts, autotexts = ax1.pie(positive_data['Risk_Percentage'], 
+                                      labels=positive_data['Factor'],
+                                      autopct='%1.1f%%',
+                                      colors=colors[:len(positive_data)],
+                                      startangle=90,
+                                      explode=[0.1 if x > 50 else 0.05 for x in positive_data['Risk_Percentage']])
+    ax1.set_title('Risk Contribution Distribution\n(Positive Contributors Only)', fontsize=14, fontweight='bold')
+    for autotext in autotexts:
+        autotext.set_color('white')
+        autotext.set_fontweight('bold')
+
+    # 2. Bar Chart - All Factors
+    ax2 = plt.subplot(2, 3, 2)
+    bars = ax2.bar(df['Factor'], df['Risk_Percentage'], 
+                   color=['red' if x < 0 else 'green' if x > 10 else 'orange' for x in df['Risk_Percentage']],
+                   alpha=0.7, edgecolor='black', linewidth=1)
+    ax2.set_title('Risk Attribution by Factor', fontsize=14, fontweight='bold')
+    ax2.set_ylabel('Risk Contribution (%)', fontsize=12)
+    ax2.set_xlabel('Risk Factors', fontsize=12)
+    ax2.axhline(y=0, color='black', linestyle='-', linewidth=0.5)
+    plt.setp(ax2.get_xticklabels(), rotation=45, ha='right')
+    for bar, value in zip(bars, df['Risk_Percentage']):
+        height = bar.get_height()
+        ax2.text(bar.get_x() + bar.get_width()/2., height + (1 if height > 0 else -2),
+                 f'{value:.1f}%', ha='center', va='bottom' if height > 0 else 'top',
+                 fontweight='bold')
+
+    # 3. Horizontal Bar Chart - Absolute Risk
+    ax3 = plt.subplot(2, 3, 3)
+    y_pos = np.arange(len(df))
+    bars_h = ax3.barh(y_pos, df['Absolute_Risk']*1000000,
+                      color=colors[:len(df)], alpha=0.7)
+    ax3.set_yticks(y_pos)
+    ax3.set_yticklabels(df['Factor'])
+    ax3.set_xlabel('Absolute Risk (×10⁻⁶)', fontsize=12)
+    ax3.set_title('Absolute Risk Contribution', fontsize=14, fontweight='bold')
+    for i, (bar, value) in enumerate(zip(bars_h, df['Absolute_Risk'])):
+        ax3.text(bar.get_width() + 1, bar.get_y() + bar.get_height()/2,
+                 f'{value:.6f}', ha='left', va='center', fontweight='bold')
+
+    # 4. Cumulative Risk Build-up
+    ax4 = plt.subplot(2, 3, 4)
+    cumulative = np.cumsum([0] + list(df['Risk_Percentage']))
+    for i, (factor, pct) in enumerate(zip(df['Factor'], df['Risk_Percentage'])):
+        color = 'red' if pct < 0 else 'green' if pct > 10 else 'orange'
+        ax4.bar(i, pct, bottom=cumulative[i] if pct > 0 else cumulative[i] + pct, 
+                color=color, alpha=0.7, edgecolor='black')
+        ax4.text(i, cumulative[i] + pct/2, f'{pct:.1f}%', 
+                 ha='center', va='center', fontweight='bold')
+    ax4.set_xticks(range(len(df)))
+    ax4.set_xticklabels(df['Factor'], rotation=45, ha='right')
+    ax4.set_title('Cumulative Risk Build-up', fontsize=14, fontweight='bold')
+    ax4.set_ylabel('Cumulative Risk (%)', fontsize=12)
+
+    # 5. Risk Metrics Summary
+    ax5 = plt.subplot(2, 3, 5)
+    ax5.axis('tight')
+    ax5.axis('off')
+    summary_data = [
+        ['Total Variance', f'{total_variance:.6f}'],
+        ['Largest Contributor', f"{df.loc[df['Risk_Percentage'].idxmax(), 'Factor']} ({df['Risk_Percentage'].max():.1f}%)"],
+        ['Systematic Risk*', f"{df[df['Factor'] != 'Residual']['Risk_Percentage'].sum():.1f}%"],
+        ['Idiosyncratic Risk', f"{df[df['Factor'] == 'Residual']['Risk_Percentage'].iloc[0]:.1f}%"],
+        ['Risk Concentration', 'High' if df['Risk_Percentage'].max() > 50 else 'Moderate'],
+        ['Factor Diversification', 'Low' if df['Risk_Percentage'].max() > 70 else 'Good']
+    ]
+    table = ax5.table(cellText=summary_data,
+                     colLabels=['Metric', 'Value'],
+                     cellLoc='center',
+                     loc='center',
+                     colWidths=[0.6, 0.4])
+    table.auto_set_font_size(False)
+    table.set_fontsize(11)
+    table.scale(1, 2)
+    for i in range(len(summary_data) + 1):
+        for j in range(2):
+            cell = table[(i, j)]
+            if i == 0:
+                cell.set_facecolor('#4ECDC4')
+                cell.set_text_props(weight='bold', color='white')
+            else:
+                cell.set_facecolor('#F8F9FA' if i % 2 == 0 else 'white')
+    ax5.set_title('Portfolio Risk Summary', fontsize=14, fontweight='bold', pad=20)
+
+    # 6. Ranking by Risk Contribution
+    ax6 = plt.subplot(2, 3, 6)
+    sorted_df = df.sort_values('Risk_Percentage', ascending=True)
+    bars_rank = ax6.barh(range(len(sorted_df)), sorted_df['Risk_Percentage'], 
+                         color=['red' if x < 0 else 'lightcoral' if x < 5 else 'gold' if x < 15 else 'darkgreen' 
+                                for x in sorted_df['Risk_Percentage']], alpha=0.8)
+    ax6.set_yticks(range(len(sorted_df)))
+    ax6.set_yticklabels(sorted_df['Factor'])
+    ax6.set_xlabel('Risk Contribution (%)', fontsize=12)
+    ax6.set_title('Factors Ranked by Risk Contribution', fontsize=14, fontweight='bold')
+    for i, (bar, value) in enumerate(zip(bars_rank, sorted_df['Risk_Percentage'])):
+        ax6.text(bar.get_width() + (1 if value > 0 else -1), bar.get_y() + bar.get_height()/2,
+                 f'{value:.1f}%', ha='left' if value > 0 else 'right', va='center', fontweight='bold')
+
+    plt.tight_layout()
+    plt.subplots_adjust(top=0.92)
+    plt.show()
+
+    # Additional Analysis
+    print("\n" + "="*60)
+    print("RISK ANALYSIS INSIGHTS")
+    print("="*60)
+    print(f"\n🔍 KEY FINDINGS:")
+    print(f"• Residual risk dominates the portfolio ({df[df['Factor']=='Residual']['Risk_Percentage'].iloc[0]:.1f}%)")
+    print(f"• Systematic risk factors contribute {df[df['Factor'] != 'Residual']['Risk_Percentage'].sum():.1f}% of total risk")
+    print(f"• {df.loc[df['Risk_Percentage'].idxmax(), 'Factor']} is the largest systematic contributor "
+          f"({df['Risk_Percentage'].max():.1f}%)")
+    print(f"• Portfolio shows {'HIGH' if df['Risk_Percentage'].max() > 70 else 'MODERATE'} concentration risk")
+
+    print(f"\n📊 RISK DECOMPOSITION:")
+    for _, row in df.iterrows():
+        risk_level = "🔴 HIGH" if row['Risk_Percentage'] > 50 else "🟡 MEDIUM" if row['Risk_Percentage'] > 10 else "🟢 LOW"
+        print(f"• {row['Factor']:<12}: {row['Risk_Percentage']:>6.2f}% {risk_level}")
+
+    print(f"\n💡 RECOMMENDATIONS:")
+    if df[df['Factor']=='Residual']['Risk_Percentage'].iloc[0] > 60:
+        print("• Consider increasing factor exposure to reduce idiosyncratic risk")
+    if any((df['Factor']=='Value') & (df['Risk_Percentage'] > 10)):
+        print("• Value factor exposure appears significant - monitor value cycle")
+    if df['Risk_Percentage'].max() > 70:
+        print("• High risk concentration detected - consider diversification")
+    print(f"\nNote: *Systematic Risk = Sum of all factor risks excluding residual")
